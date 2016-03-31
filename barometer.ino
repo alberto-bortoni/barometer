@@ -1,13 +1,8 @@
-
-
-
-
-
 #include <SFE_BMP180.h>
 #include <Wire.h>
 #include <EEPROM.h>
 
-
+/*http://www.hobbytronics.co.uk/arduino-external-eeprom*/
 /***********************************************************/
 /*                   SYSTEM VARIABLES                      */
 /*---------------------------------------------------------*/
@@ -25,6 +20,7 @@ int lastRecordTime  = 0;
 int lastEventTime   = 0;
 
 //EEPROM
+#DEFINE EEADDR 0x50             /*Address of 24LC256 eeprom chip*/
 const int dataStartAdd = 15;
 const int eventStartAdd = 2;
 const int currAddPtr = 0; 
@@ -169,15 +165,6 @@ void loop() {
 /*------------------------------------------------*/
 
 
-//EEPROM
-const int dataStartAdd = 15;
-const int eventStartAdd = 2;
-const int currAddPtr = 0; 
-const int currEventPtr = 1;
-int currEvent = eventStartAdd;
-int currAdd = dataStartAdd;
-
-
 
 /**
   *
@@ -272,7 +259,6 @@ void transmitData(){
     Serial.print(EEPROM.read(cnt+2));
     Serial.print(",");
   }
-
 }
 /*------------------------------------------------*/
 
@@ -363,6 +349,45 @@ void ledErrorDance(){
   digitalWrite(ledPin, HIGH);
   delay(100);
   digitalWrite(ledPin, LOW);
+}
+/*------------------------------------------------*/
+
+
+
+/**
+  *
+  *
+  */
+void writeEEPROM(unsigned int eeaddress, byte data){
+  Wire.beginTransmission(EEADDR);
+  Wire.send((int)(eeaddress >> 8));   // MSB
+  Wire.send((int)(eeaddress & 0xFF)); // LSB
+  Wire.send(data);
+  Wire.endTransmission();
+ 
+  delay(5);
+}
+/*------------------------------------------------*/
+
+ 
+
+/**
+  *
+  *
+  */
+byte readEEPROM(unsigned int eeaddress ){
+  byte rdata = 0xFF;
+ 
+  Wire.beginTransmission(EEADDR);
+  Wire.send((int)(eeaddress >> 8));   // MSB
+  Wire.send((int)(eeaddress & 0xFF)); // LSB
+  Wire.endTransmission();
+ 
+  Wire.requestFrom(EEADDR,1);
+ 
+  if (Wire.available()) rdata = Wire.receive();
+ 
+  return rdata;
 }
 /*------------------------------------------------*/
 
