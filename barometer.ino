@@ -7,16 +7,19 @@
 /*---------------------------------------------------------*/
 
 //SYSTEM
+#define VERBOSE     1
+#define SAMPLETIME  3000
+#define ERRORCODE   222
 float vcc       = 5.0;
-int baudRate    = 57600;
+unsigned int baudRate  = 57600;
 int sampleRate  = 2000;
 int errorFlag   = 0;
-int time        = 0;
-int lastControlTime = 0;
+unsigned int time        = 0;
+unsigned int lastControlTime = 0;
 byte controlTask    = 0;
 byte controlLatch   = 0;
-int lastRecordTime  = 0;
-int lastEventTime   = 0;
+unsigned int lastRecordTime  = 0;
+unsigned int lastEventTime   = 0;
 
 //EEPROM
 #define EEADDR    0x50      /*Address of 24LC256 eeprom chip*/
@@ -25,8 +28,8 @@ const int dataStartAdd  = 15;
 const int eventStartAdd = 2;
 const int currAddPtr    = 0; 
 const int currEventPtr  = 1;
-int currEvent = eventStartAdd;
-int currAdd = dataStartAdd;
+unsigned int currEvent;
+unsigned int currAdd;
 
 //HUMIDITY
 int humidityPin     = A1;
@@ -65,10 +68,10 @@ void setup() {
   pinMode(buttonPin, INPUT);
   
   if (bmp180.begin()){
-    Serial.println("BMP180 init success");                    //TODO -- alberto.bortoni: have a flag to enable or disable serial
+    if(VERBOSE){Serial.println("BMP180 init success");}       //TODO -- alberto.bortoni: have a flag to enable or disable serial
   }
   else {                                                      //TODO -- alberto.bortoni: mark with led error before while
-    Serial.println("BMP180 init fail\n\n");
+    if(VERBOSE){Serial.println("BMP180 init fail\n\n");}
     while(1){} // Pause forever.
   }
 
@@ -88,7 +91,7 @@ void loop() {
       lastControlTime = millis();
       controlLatch = 1;
       digitalWrite(ledPin, HIGH);
-      continue;
+      delay(30);
     }
   }
 
@@ -106,7 +109,6 @@ void loop() {
       digitalWrite(ledPin, HIGH);
       delay(150);
       digitalWrite(ledPin, LOW);
-      continue;
     }
   }
 
@@ -114,7 +116,7 @@ void loop() {
     if (digitalRead(buttonPin) == LOW){
       lastControlTime = millis();
       controlLatch = 3;
-      continue;
+      delay(30);
     }
   }
 
@@ -122,7 +124,6 @@ void loop() {
     if (digitalRead(buttonPin) == HIGH){
       controlLatch = 0;
       ledErrorDance();
-      continue;
     }
 
     if(millis()-lastControlTime >= 3000){
@@ -134,7 +135,6 @@ void loop() {
       digitalWrite(ledPin, HIGH);
       controlTask = 0;
       lastControlTime = millis();
-      continue;
     }
   }
 
@@ -158,6 +158,7 @@ void loop() {
         while(digitalRead(buttonPin) == HIGH){}
         digitalWrite(ledPin, HIGH);
         delay(30);
+        digitalWrite(ledPin, LOW);
       }
     }
   }
@@ -165,21 +166,25 @@ void loop() {
   while(controlLatch == 5){                                               //TODO -- foreverloop?
     switch (controlTask){
       case 1:                          /*sart/continue with recording   */
+        if(VERBOSE){Serial.println("start recording");}
         recordData();
         break;
       case 2:                          /*reset all data (just pointers) */ //TODO -- alberto.bortoni: mclear to 0?
+        if(VERBOSE){Serial.println("clearing data and pointers");}
         resetData();
         break;
       case 3:                          /*transmit data via RS232        */
+        if(VERBOSE){Serial.println("start data transmission");}
         transmitData();
         break;
       default:
         break;
     }
-  }
 
   ledErrorDance();
-  return;
+  if(VERBOSE){Serial.println("program terminated");}
+  while(1){}  
+  }
 }
 /*------------------------------------------------*/
 
@@ -195,11 +200,11 @@ void recordData(){
   currEvent = readEEPROM(currEventPtr);
 
 
-  lastRecordTime  = millis();
+  lastRecordTime  = millis();                                 //TODO -- alberto.bortoni: add clock wraping
   lastEventTime   = millis();
 
-  while(currAddPtr<1020){
-    if((millis()-lastRecordTime)>5000){
+  while(currAddPtr<EEMAXADD){
+    if((millis()-lastRecordTime)>SAMPLETIME){
       lastRecordTime = millis();
       getTemperature();
       getHumidity();
@@ -212,11 +217,16 @@ void recordData(){
         currAdd++;
         writeEEPROM(currAdd, humidityMem);
         currAdd++;
-        writeEEPROM(currAddPtr, currAdd);
       }
       else{                                                     //TODO -- alberto.bortoni: fill error handling
-
+        writeEEPROM(currAdd, ERRORCODE);
+        currAdd++;
+        writeEEPROM(currAdd, ERRORCODE);
+        currAdd++;
+        writeEEPROM(currAdd, ERRORCODE);
+        currAdd++;
       }
+      writeEEPROM(currAddPtr, currAdd);
     }
 
     if(digitalRead(buttonPin) == HIGH && currEvent<15 && (millis()-lastEventTime)>15000){
@@ -224,9 +234,7 @@ void recordData(){
       digitalWrite(ledPin, HIGH);
       writeEEPROM(currEvent, currAdd);
       currEvent++;
-      if(currEvent<15){
-        writeEEPROM(currEventPtr, currEvent);
-      }
+      writeEEPROM(currEventPtr, currEvent);
       delay(20);
       digitalWrite(ledPin, LOW);
       if(currEvent == 15){ledErrorDance();}
@@ -244,6 +252,16 @@ void recordData(){
   *
   */
 void resetData(){
+  unsigned int k = 0;
+
+  for(k = 0; k<EEMAXADD; k++){
+    writeEEPROM(k, 0);
+    if(VERBOSE && k%500 == 0){
+      Serial.print("cleared until ");
+      Serial.println(k);
+    }
+  }
+
   writeEEPROM(currAddPtr, dataStartAdd);
   writeEEPROM(currEventPtr, eventStartAdd);
 }
@@ -256,8 +274,13 @@ void resetData(){
   *
   */
 void transmitData(){
-  int cnt = 0;
-  Serial.println("Press button to start trasmitting\n\n");
+  unsigned int cnt = 0;
+
+  currAdd = readEEPROM(currAddPtr);
+  currEvent = readEEPROM(currEventPtr);
+
+  Serial.println("Press button to start trasmitting");
+  Serial.println("Temperature: degC*5 Pressure:kPa Humidity: relative %\n\n");
 
   while(digitalRead(buttonPin) == LOW){}
 
@@ -265,18 +288,20 @@ void transmitData(){
   delay(300);
   digitalWrite(ledPin, LOW);
 
-  for(cnt = eventStartAdd; cnt < dataStartAdd; cnt++){
+  for(cnt = eventStartAdd; cnt <= currEvent; cnt++){
     Serial.print(readEEPROM(cnt));
-    Serial.print(", ");
+    Serial.print(",");
   }
 
-  for(cnt = dataStartAdd; cnt < 1024; cnt+=3){
+  Serial.println();
+
+  for(cnt = dataStartAdd; cnt <= currAdd; cnt+=3){
     Serial.print(readEEPROM(cnt));
-    Serial.print(", ");
-    Serial.print(readEEPROM(cnt+1));
-    Serial.print(", ");
-    Serial.print(readEEPROM(cnt+2));
     Serial.print(",");
+    Serial.print(readEEPROM(cnt+1));
+    Serial.print(",");
+    Serial.print(readEEPROM(cnt+2));
+    Serial.println(",");
   }
 }
 /*------------------------------------------------*/
@@ -314,6 +339,10 @@ void getTemperature(){
     errorFlag = 1;
     return;                                             //TODO -- alberto.bortoni: go to exception 
   }
+
+  if(tempC>50){tempC  = 50;}
+  if(tempC<0){tempC   = 0;}
+
   tempCMem = byte(tempC*5);
 }
 /*------------------------------------------------*/
@@ -379,9 +408,9 @@ void ledErrorDance(){
   */
 void writeEEPROM(unsigned int eeaddress, byte data){
   Wire.beginTransmission(EEADDR);
-  Wire.send((int)(eeaddress >> 8));   // MSB
-  Wire.send((int)(eeaddress & 0xFF)); // LSB
-  Wire.send(data);
+  Wire.write((int)(eeaddress >> 8));   // MSB
+  Wire.write((int)(eeaddress & 0xFF)); // LSB
+  Wire.write(data);
   Wire.endTransmission();
  
   delay(5);
@@ -394,17 +423,17 @@ void writeEEPROM(unsigned int eeaddress, byte data){
   *
   *
   */
-byte readEEPROM(unsigned int eeaddress){
+byte readEEPROM(unsigned int eeaddress ){
   byte rdata = 0xFF;
  
   Wire.beginTransmission(EEADDR);
-  Wire.send((int)(eeaddress >> 8));   // MSB
-  Wire.send((int)(eeaddress & 0xFF)); // LSB
+  Wire.write((int)(eeaddress >> 8));   // MSB
+  Wire.write((int)(eeaddress & 0xFF)); // LSB
   Wire.endTransmission();
  
   Wire.requestFrom(EEADDR,1);
  
-  if (Wire.available()) rdata = Wire.receive();
+  if (Wire.available()) rdata = Wire.read();
  
   return rdata;
 }
