@@ -16,6 +16,7 @@ void setup() {
   // initialize the digital pin as an output.
   pinMode(led, OUTPUT);
   pinMode(button, INPUT);  
+  Serial.begin(57600);
 }
 
 // the loop routine runs over and over again forever:
@@ -24,6 +25,8 @@ void loop() {
   
   if (buttonState == HIGH){
     digitalWrite(led, HIGH);
+    Serial.println("pressed");
+    delay(30);
   }
   else{
     digitalWrite(led, LOW);    // turn the LED off by making the voltage LOW

@@ -2,6 +2,9 @@
 #include <Wire.h>
 
 /*http://www.hobbytronics.co.uk/arduino-external-eeprom*/
+/*cat /dev/ttyUSB0 > test
+screen /dev/ttyUSB0 57600
+tail -f test */
 /***********************************************************/
 /*                   SYSTEM VARIABLES                      */
 /*---------------------------------------------------------*/
@@ -14,21 +17,21 @@ float vcc       = 5.0;
 unsigned int baudRate  = 57600;
 int sampleRate  = 2000;
 int errorFlag   = 0;
-unsigned int time        = 0;
-unsigned int lastControlTime = 0;
+unsigned long time        = 0;
+unsigned long lastControlTime = 0;
 byte controlTask    = 0;
 byte controlLatch   = 0;
-unsigned int lastRecordTime  = 0;
-unsigned int lastEventTime   = 0;
+unsigned long lastRecordTime  = 0;
+unsigned long lastEventTime   = 0;
 
 //EEPROM
 #define EEADDR    0x50      /*Address of 24LC256 eeprom chip*/
 #define EEMAXADD  32768     /* max addres in bytes          */
-const int dataStartAdd  = 15;
-const int eventStartAdd = 2;
+const int dataStartAdd  = 20;
+const int eventStartAdd = 3;
 const int currAddPtr    = 0; 
-const int currEventPtr  = 1;
-unsigned int currEvent;
+const int currEventPtr  = 2;
+int currEvent;
 unsigned int currAdd;
 
 //HUMIDITY
@@ -62,18 +65,19 @@ int buttonPin = 8;
 void setup() {
   
   Serial.begin(57600);
+  if(VERBOSE){Serial.println("BAROMETIC PRESSURE LOGGER");} 
+
   Wire.begin();                                               //TODO -- alberto.bortoni: this is probably already in bmp 180 init
   pinMode(ledPin, OUTPUT);
   digitalWrite(ledPin, LOW); 
   pinMode(buttonPin, INPUT);
   
-  if (bmp180.begin()){
-    if(VERBOSE){Serial.println("BMP180 init success");}       //TODO -- alberto.bortoni: have a flag to enable or disable serial
-  }
-  else {                                                      //TODO -- alberto.bortoni: mark with led error before while
+  if (bmp180.begin()== 0){                                                   //TODO -- alberto.bortoni: mark with led error before while
     if(VERBOSE){Serial.println("BMP180 init fail\n\n");}
     while(1){} // Pause forever.
   }
+  
+  if(VERBOSE){Serial.println("system init success");}       //TODO -- alberto.bortoni: have a flag to enable or disable serial
 
   time = millis();
 }
@@ -169,13 +173,13 @@ void loop() {
         if(VERBOSE){Serial.println("start recording");}
         recordData();
         break;
-      case 2:                          /*reset all data (just pointers) */ //TODO -- alberto.bortoni: mclear to 0?
-        if(VERBOSE){Serial.println("clearing data and pointers");}
-        resetData();
+      case 2:
+        if(VERBOSE){Serial.println("start data transmission");}
+        transmitData();                          /*reset all data (just pointers) */ //TODO -- alberto.bortoni: mclear to 0?
         break;
       case 3:                          /*transmit data via RS232        */
-        if(VERBOSE){Serial.println("start data transmission");}
-        transmitData();
+        if(VERBOSE){Serial.println("clearing data and pointers");}
+        resetData();
         break;
       default:
         break;
@@ -183,6 +187,7 @@ void loop() {
 
   ledErrorDance();
   if(VERBOSE){Serial.println("program terminated");}
+  Serial.end();
   while(1){}  
   }
 }
@@ -196,14 +201,14 @@ void loop() {
   */
 void recordData(){
 
-  currAdd = readEEPROM(currAddPtr);
+  currAdd = readEEPROM(currAddPtr)<<8 | readEEPROM(currAddPtr+1);
   currEvent = readEEPROM(currEventPtr);
 
 
   lastRecordTime  = millis();                                 //TODO -- alberto.bortoni: add clock wraping
   lastEventTime   = millis();
 
-  while(currAddPtr<EEMAXADD){
+  while(currAdd<EEMAXADD){
     if((millis()-lastRecordTime)>SAMPLETIME){
       lastRecordTime = millis();
       getTemperature();
@@ -226,8 +231,24 @@ void recordData(){
         writeEEPROM(currAdd, ERRORCODE);
         currAdd++;
       }
-      writeEEPROM(currAddPtr, currAdd);
+      
+      writeEEPROM(currAddPtr, (currAdd>>8 & 0xFF));
+      writeEEPROM(currAddPtr+1, (currAdd & 0xFF));
+    
+      if(VERBOSE){
+        Serial.print("Mem ");
+        Serial.print(currAdd-3);
+        Serial.print("\tT: ");
+        Serial.print(tempCMem/5, DEC);
+        Serial.print("\tP: ");
+        Serial.print(pressMem);
+        Serial.print("\tH: ");
+        Serial.print(humidityMem);
+        Serial.print("\tTime: ");
+        Serial.println(millis());
+      }
     }
+
 
     if(digitalRead(buttonPin) == HIGH && currEvent<15 && (millis()-lastEventTime)>15000){
       lastEventTime = millis();
@@ -237,9 +258,14 @@ void recordData(){
       writeEEPROM(currEventPtr, currEvent);
       delay(20);
       digitalWrite(ledPin, LOW);
-      if(currEvent == 15){ledErrorDance();}
-    }
 
+      if(currEvent == 15){ledErrorDance();}
+
+      if(VERBOSE){
+        Serial.print("Event at: ");
+        Serial.println(currAdd);
+      }
+    }
   }
   return;
 }
@@ -262,7 +288,8 @@ void resetData(){
     }
   }
 
-  writeEEPROM(currAddPtr, dataStartAdd);
+  writeEEPROM(currAddPtr, 0);
+  writeEEPROM(currAddPtr+1, dataStartAdd);
   writeEEPROM(currEventPtr, eventStartAdd);
 }
 /*------------------------------------------------*/
@@ -276,17 +303,18 @@ void resetData(){
 void transmitData(){
   unsigned int cnt = 0;
 
-  currAdd = readEEPROM(currAddPtr);
+  currAdd = readEEPROM(currAddPtr)<<8 | readEEPROM(currAddPtr+1);
   currEvent = readEEPROM(currEventPtr);
+  digitalWrite(ledPin, HIGH);
 
   Serial.println("Press button to start trasmitting");
-  Serial.println("Temperature: degC*5 Pressure:kPa Humidity: relative %\n\n");
+  Serial.println("Temperature: degC*5 Pressure:kPa Humidity: relative %\n");
 
   while(digitalRead(buttonPin) == LOW){}
 
-  digitalWrite(ledPin, HIGH);
-  delay(300);
   digitalWrite(ledPin, LOW);
+  delay(300);
+  digitalWrite(ledPin, HIGH);
 
   for(cnt = eventStartAdd; cnt <= currEvent; cnt++){
     Serial.print(readEEPROM(cnt));
@@ -295,7 +323,7 @@ void transmitData(){
 
   Serial.println();
 
-  for(cnt = dataStartAdd; cnt <= currAdd; cnt+=3){
+  for(cnt = dataStartAdd; cnt < currAdd; cnt+=3){
     Serial.print(readEEPROM(cnt));
     Serial.print(",");
     Serial.print(readEEPROM(cnt+1));
@@ -423,7 +451,7 @@ void writeEEPROM(unsigned int eeaddress, byte data){
   *
   *
   */
-byte readEEPROM(unsigned int eeaddress ){
+byte readEEPROM(unsigned int eeaddress){
   byte rdata = 0xFF;
  
   Wire.beginTransmission(EEADDR);
