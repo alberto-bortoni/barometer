@@ -1,6 +1,5 @@
 #include <SFE_BMP180.h>
 #include <Wire.h>
-#include <EEPROM.h>
 
 /*http://www.hobbytronics.co.uk/arduino-external-eeprom*/
 /***********************************************************/
@@ -20,11 +19,12 @@ int lastRecordTime  = 0;
 int lastEventTime   = 0;
 
 //EEPROM
-#DEFINE EEADDR 0x50             /*Address of 24LC256 eeprom chip*/
-const int dataStartAdd = 15;
+#define EEADDR    0x50      /*Address of 24LC256 eeprom chip*/
+#define EEMAXADD  32768     /* max addres in bytes          */
+const int dataStartAdd  = 15;
 const int eventStartAdd = 2;
-const int currAddPtr = 0; 
-const int currEventPtr = 1;
+const int currAddPtr    = 0; 
+const int currEventPtr  = 1;
 int currEvent = eventStartAdd;
 int currAdd = dataStartAdd;
 
@@ -32,14 +32,14 @@ int currAdd = dataStartAdd;
 int humidityPin     = A1;
 float humidityRaw   = 0.0;
 float humidity      = 0.0;  /* % of relative humidity     */
-byte humidityMem     = 0;
+byte humidityMem    = 0;
 
 //PRESSURE-TEMPERATURE
 SFE_BMP180 bmp180;
 double tempC  = 0.0;        /* temperature in C           */
-byte tempCMem  = 0;
+byte tempCMem = 0;
 double press  = 0.0;        /* absolute pressure in mBar  */
-byte pressMem  = 0;
+byte pressMem = 0;
 char statdel  = 0;
 
 //LED-BUTTON
@@ -59,7 +59,7 @@ int buttonPin = 8;
 void setup() {
   
   Serial.begin(57600);
-  
+  Wire.begin();                                               //TODO -- alberto.bortoni: this is probably already in bmp 180 init
   pinMode(ledPin, OUTPUT);
   digitalWrite(ledPin, LOW); 
   pinMode(buttonPin, INPUT);
@@ -69,7 +69,7 @@ void setup() {
   }
   else {                                                      //TODO -- alberto.bortoni: mark with led error before while
     Serial.println("BMP180 init fail\n\n");
-    while(1); // Pause forever.
+    while(1){} // Pause forever.
   }
 
   time = millis();
@@ -83,41 +83,50 @@ void setup() {
   */
 void loop() {
 
-  if (digitalRead(buttonPin) == HIGH && controlLatch == 0){
-    lastControlTime = millis();
-    controlLatch = 1;
-    digitalWrite(ledPin, HIGH);
-  }
-
-  if (digitalRead(buttonPin) == LOW && controlLatch == 1){
-    controlLatch = 0;
-    ledErrorDance();
-  }
-
-  while(digitalRead(buttonPin) == HIGH && controlLatch == 1){
-    if(millis()-lastControlTime >= 3000){
-      controlLatch = 2
-      digitalWrite(ledPin, LOW);
-      delay(300);
+  while(controlLatch == 0){                              /*wait until button gets pressed*/
+    if (digitalRead(buttonPin) == HIGH){
+      lastControlTime = millis();
+      controlLatch = 1;
       digitalWrite(ledPin, HIGH);
-      delay(300);
-      digitalWrite(ledPin, LOW);
+      continue;
     }
   }
 
-  if (digitalRead(buttonPin) == LOW && controlLatch == 2){
-    lastControlTime = millis();
-    controlLatch = 3;
-  }
+  while(controlLatch == 1){                              /*hold button for 3 sec*/
+    if (digitalRead(buttonPin) == LOW){
+      controlLatch = 0;
+      ledErrorDance();
+      continue;
+    }
 
-  if (digitalRead(buttonPin) == HIGH && controlLatch == 3){
-    controlLatch = 0;
-    ledErrorDance();
-  }
-
-  while(digitalRead(buttonPin) == LOW && controlLatch == 3){
     if(millis()-lastControlTime >= 3000){
-      controlLatch = 4
+      controlLatch = 2;
+      digitalWrite(ledPin, LOW);
+      delay(150);
+      digitalWrite(ledPin, HIGH);
+      delay(150);
+      digitalWrite(ledPin, LOW);
+      continue;
+    }
+  }
+
+  while(controlLatch == 2){                              /*wait until button gets depressed*/
+    if (digitalRead(buttonPin) == LOW){
+      lastControlTime = millis();
+      controlLatch = 3;
+      continue;
+    }
+  }
+
+  while(controlLatch == 3){                             /*leave depressed button for 3 seconds*/
+    if (digitalRead(buttonPin) == HIGH){
+      controlLatch = 0;
+      ledErrorDance();
+      continue;
+    }
+
+    if(millis()-lastControlTime >= 3000){
+      controlLatch = 4;
       digitalWrite(ledPin, HIGH);
       delay(300);
       digitalWrite(ledPin, LOW);
@@ -125,33 +134,43 @@ void loop() {
       digitalWrite(ledPin, HIGH);
       controlTask = 0;
       lastControlTime = millis();
+      continue;
     }
   }
 
-  if((millis()-lastControlTime > 8000) && controlLatch == 4){
-    controlLatch = 0;
-    ledErrorDance();
-  }
+  while(controlLatch == 4){                             /*count button pressing*/
+    if((millis()-lastControlTime > 8000) && controlTask == 0){
+      controlLatch = 0;
+      ledErrorDance();
+      continue;
+    }
 
-  while((millis()-lastControlTime <= 8000) && controlLatch == 4){
-    if(digitalRead(buttonPin) == HIGH){
+    if((millis()-lastControlTime > 8000) && controlTask != 0){
       controlLatch = 5;
-      controlTask = 1;
-      delay(30);
-      while(digitalRead(buttonPin) == HIGH){}
-      delay(30);
+      continue;
+    }
+
+    while(millis()-lastControlTime <= 8000){
+      if(digitalRead(buttonPin) == HIGH){
+        digitalWrite(ledPin, LOW);
+        controlTask++;
+        delay(30);
+        while(digitalRead(buttonPin) == HIGH){}
+        digitalWrite(ledPin, HIGH);
+        delay(30);
+      }
     }
   }
 
-  if(controlLatch == 5){
+  while(controlLatch == 5){                                               //TODO -- foreverloop?
     switch (controlTask){
       case 1:                          /*sart/continue with recording   */
         recordData();
         break;
-      case 2:                          /*reset all data (just pointers) */
+      case 2:                          /*reset all data (just pointers) */ //TODO -- alberto.bortoni: mclear to 0?
         resetData();
         break;
-      case 2:                          /*transmit data via RS232        */
+      case 3:                          /*transmit data via RS232        */
         transmitData();
         break;
       default:
@@ -160,7 +179,7 @@ void loop() {
   }
 
   ledErrorDance();
-  return 0;
+  return;
 }
 /*------------------------------------------------*/
 
@@ -172,8 +191,8 @@ void loop() {
   */
 void recordData(){
 
-  currAdd = EEPROM.read(currAddPtr);
-  currEvent = EEPROM.read(currEventPtr);
+  currAdd = readEEPROM(currAddPtr);
+  currEvent = readEEPROM(currEventPtr);
 
 
   lastRecordTime  = millis();
@@ -187,26 +206,26 @@ void recordData(){
       getPressure();
     
       if(errorFlag == 0){
-        EEPROM.update(currAdd, tempCMem);
+        writeEEPROM(currAdd, tempCMem);
         currAdd++;
-        EEPROM.update(currAdd, pressMem);
+        writeEEPROM(currAdd, pressMem);
         currAdd++;
-        EEPROM.update(currAdd, humidityMem);
+        writeEEPROM(currAdd, humidityMem);
         currAdd++;
-        EEPROM.update(currAddPtr, currAdd);
+        writeEEPROM(currAddPtr, currAdd);
       }
       else{                                                     //TODO -- alberto.bortoni: fill error handling
 
       }
     }
 
-    if(digitalRead(buttonPin) == HIGH && currEvent<15 %% (millis()-lastEventTime)>15000){
+    if(digitalRead(buttonPin) == HIGH && currEvent<15 && (millis()-lastEventTime)>15000){
       lastEventTime = millis();
       digitalWrite(ledPin, HIGH);
-      EEPROM.update(currEvent, currAdd);
-      currEvent++
+      writeEEPROM(currEvent, currAdd);
+      currEvent++;
       if(currEvent<15){
-        EEPROM.update(currEventPtr, currEvent);
+        writeEEPROM(currEventPtr, currEvent);
       }
       delay(20);
       digitalWrite(ledPin, LOW);
@@ -214,7 +233,7 @@ void recordData(){
     }
 
   }
-  return 0;
+  return;
 }
 /*------------------------------------------------*/
 
@@ -225,8 +244,8 @@ void recordData(){
   *
   */
 void resetData(){
-  EEPROM.update(currAddPtr, dataStartAdd);
-  EEPROM.update(currEventPtr, eventStartAdd);
+  writeEEPROM(currAddPtr, dataStartAdd);
+  writeEEPROM(currEventPtr, eventStartAdd);
 }
 /*------------------------------------------------*/
 
@@ -247,16 +266,16 @@ void transmitData(){
   digitalWrite(ledPin, LOW);
 
   for(cnt = eventStartAdd; cnt < dataStartAdd; cnt++){
-    Serial.print(EEPROM.read(cnt));
+    Serial.print(readEEPROM(cnt));
     Serial.print(", ");
   }
 
   for(cnt = dataStartAdd; cnt < 1024; cnt+=3){
-    Serial.print(EEPROM.read(cnt));
+    Serial.print(readEEPROM(cnt));
     Serial.print(", ");
-    Serial.print(EEPROM.read(cnt+1));
+    Serial.print(readEEPROM(cnt+1));
     Serial.print(", ");
-    Serial.print(EEPROM.read(cnt+2));
+    Serial.print(readEEPROM(cnt+2));
     Serial.print(",");
   }
 }
@@ -285,7 +304,7 @@ void getTemperature(){
   statdel = bmp180.startTemperature();
   if (statdel == 0){
     errorFlag = 1;
-    return 0;                                             //TODO -- alberto.bortoni: go to exception 
+    return;                                             //TODO -- alberto.bortoni: go to exception 
   }
     
   delay(statdel);
@@ -293,7 +312,7 @@ void getTemperature(){
   statdel = bmp180.getTemperature(tempC);
   if (statdel == 0){
     errorFlag = 1;
-    return 0;                                             //TODO -- alberto.bortoni: go to exception 
+    return;                                             //TODO -- alberto.bortoni: go to exception 
   }
   tempCMem = byte(tempC*5);
 }
@@ -309,7 +328,7 @@ void getPressure(){
   statdel = bmp180.startPressure(3);
   if (statdel == 0){
     errorFlag = 1;
-    return 0;                                             //TODO -- alberto.bortoni: go to exception 
+    return;                                             //TODO -- alberto.bortoni: go to exception 
   }
   
   delay(statdel);
@@ -317,7 +336,7 @@ void getPressure(){
   statdel = bmp180.getPressure(press,tempC);
   if (statdel == 0){
     errorFlag = 1;
-    return 0;                                             //TODO -- alberto.bortoni: go to exception 
+    return;                                             //TODO -- alberto.bortoni: go to exception 
   }
   pressMem = byte(press/10);
 }
@@ -375,7 +394,7 @@ void writeEEPROM(unsigned int eeaddress, byte data){
   *
   *
   */
-byte readEEPROM(unsigned int eeaddress ){
+byte readEEPROM(unsigned int eeaddress){
   byte rdata = 0xFF;
  
   Wire.beginTransmission(EEADDR);
