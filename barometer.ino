@@ -10,8 +10,8 @@ tail -f test */
 /*---------------------------------------------------------*/
 
 //SYSTEM
-#define VERBOSE     1
-#define SAMPLETIME  3000
+#define VERBOSE     0
+#define SAMPLETIME  5000
 #define ERRORCODE   222
 float vcc       = 5.0;
 unsigned int baudRate  = 57600;
@@ -168,6 +168,12 @@ void loop() {
   }
 
   while(controlLatch == 5){                                               //TODO -- foreverloop?
+    digitalWrite(ledPin, LOW);
+    delay(150);
+    digitalWrite(ledPin, HIGH);
+    delay(150);
+    digitalWrite(ledPin, LOW);
+    
     switch (controlTask){
       case 1:                          /*sart/continue with recording   */
         if(VERBOSE){Serial.println("start recording");}
