@@ -1,20 +1,54 @@
+/*****************************************************************/
+
+/*   created by: alberto bortoni
+ * hardware: 
+ *   - Arduino pro-mini 5V 16Mhz atmega 328Mhz
+ *   - pressure sensor BMP180 on sparkfun SEN-11824 breakout
+ *   - humidity sensor HIH-4030 on sparkfun SEN-09569 berakout
+ *   - eeprom AT24C256
+ *
+ * the program saves data of temperature, pressure, and humidity
+ * on the eeprom memory, a start and end pointer, retrieved form 
+ * the reserved space in the eeprom, tracks the data recorded.
+ * the interval between samples is defined by SAMPLETIME in ms
+ * In the header, change the baudrate and verbose output; this 
+ * outputs stuff when debugging.
+ * the data transmitted contains a small header with explanations
+ * for interpreting the data. 
+ * using the program
+ *   - one button interface, trun on with switch
+ *   - press button for 5 sec, wait for light to trun on/off
+ *   - unpress button for 5 sec, wait for light to turn on/off
+ *   - press either:
+ *     - 1 time, for logging; starts at pointer where it was left
+ *     - 2 times, transmits data between start to end pointer
+ *     - 3 times, clears data by reasigning the start pointer to 
+ *       the current pointer on eeprom
+ *
+ *  other stuff:
+ *    cat /dev/ttyUSB0 > test
+ *    tail -f test
+ *    screen /dev/ttyUSB0 57600
+ *
+ *  For full list of materials and other documentation visit
+ *  my website at bortoni.mx
+*/
+/*---------------------------------------------------------------*/
+
 #include <SFE_BMP180.h>
 #include <Wire.h>
 
-/*http://www.hobbytronics.co.uk/arduino-external-eeprom*/
-/*cat /dev/ttyUSB0 > test
-screen /dev/ttyUSB0 57600
-tail -f test */
 /***********************************************************/
 /*                   SYSTEM VARIABLES                      */
 /*---------------------------------------------------------*/
 
 //SYSTEM
-#define VERBOSE     0
+#define VERBOSE     1
+#define BAUDRATE    57600;
 #define SAMPLETIME  5000
 #define ERRORCODE   222
+
 float vcc       = 5.0;
-unsigned int baudRate  = 57600;
 int sampleRate  = 2000;
 int errorFlag   = 0;
 unsigned long time        = 0;
@@ -314,7 +348,9 @@ void transmitData(){
   digitalWrite(ledPin, HIGH);
 
   Serial.println("Press button to start trasmitting");
-  Serial.println("Temperature: degC*5 Pressure:kPa Humidity: relative %\n");
+  Serial.print("Temperature: degC*5; Pressure:kPa; Humidity: relative %; time sec:\n");
+  Serial.println(SAMPLETIME/1000,0);
+  Serial.println();
 
   while(digitalRead(buttonPin) == LOW){}
 
