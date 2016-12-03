@@ -50,7 +50,7 @@
 /*---------------------------------------------------------*/
 
 //SYSTEM
-#define VERBOSE     1
+#define VERBOSE     0
 #define BAUDRATE    57600;
 #define SAMPLETIME  6000
 #define ERRORCODE   222
@@ -380,7 +380,7 @@ void transmitData(){
     Serial.print(readEEPROM(cnt+1));
     Serial.print(",");
     Serial.print(readEEPROM(cnt+2));
-    Serial.println(",");
+    Serial.println();
   }
 }
 /*------------------------------------------------*/
