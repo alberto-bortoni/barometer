@@ -356,10 +356,12 @@ void transmitData(){
   currEvent = readEEPROM(currEventPtr);
   digitalWrite(ledPin, HIGH);
 
-  Serial.println("Press button to start trasmitting");
-  Serial.print("Temperature: degC*5; Pressure:kPa; Humidity: relative %; time sec: ");
-  Serial.println(SAMPLETIME/1000);
-  Serial.println();
+  if(VERBOSE){
+    Serial.println("Press button to start trasmitting");
+    Serial.print("Temperature: degC*5; Pressure:kPa; Humidity: relative %; time sec: ");
+    Serial.println(SAMPLETIME/1000);
+    Serial.println();
+  }
 
   while(digitalRead(buttonPin) == LOW){}
 

@@ -1,12 +1,12 @@
 %% open-file
 [FileName,PathName] = uigetfile('*.csv','Select the log file  ');
 flight = input('Flight Number:  ','s');
-date   = input('date (yy-Mmm):  ','s');
+date   = input('date (YY-MMM-DD):  ','s');
 dest   = input('destination (ORG-SCL-DES):  ','s');
 header = strcat(flight, string(' '), date, string(' '), dest);
 cd(PathName);
 data = csvread(FileName);
-
+cd ..;
 
 %% modify-array
 %1- temp; 2-pressure; 3-humidity
@@ -24,7 +24,7 @@ figure
 subplot(2,2,1);
 plot(t,data(:,1),'Color',[0 .2 .6]);
 ylabel('temperature [C]');
-xlabel('time h');
+xlabel('time [h]');
 ax = gca;
 ax.XColor = [0 .2 .6];
 ax.YColor = [0 .2 .6];
@@ -36,7 +36,7 @@ ax.YGrid = 'on';
 %second plot - humidity
 subplot(2,2,2);
 plot(t,data(:,3),'Color',[0 .6 0]);
-xlabel('time h');
+xlabel('time [h]');
 ylabel('humidity [%rel]');
 ax = gca;
 ax.XColor = [0 .6 0];
@@ -49,7 +49,7 @@ ax.YGrid = 'on';
 %third plot - pressure
 subplot(2,2, [3 4]);
 plot(t,data(:,2),'Color',[.4 .2 0]);
-xlabel('time h');
+xlabel('time [h]');
 ylabel('pressure [atm]');
 ax = gca;
 ax.XColor = [.4 .2 0];
