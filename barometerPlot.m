@@ -1,9 +1,7 @@
 %% open-file
+clear;
+clc;
 [FileName,PathName] = uigetfile('*.csv','Select the log file  ');
-flight = input('Flight Number:  ','s');
-date   = input('date (YY-MMM-DD):  ','s');
-dest   = input('destination (ORG-SCL-DES):  ','s');
-header = strcat(flight, string(' '), date, string(' '), dest);
 cd(PathName);
 data = csvread(FileName);
 cd ..;
@@ -60,5 +58,5 @@ ax.XGrid = 'on';
 ax.YGrid = 'on';
 
 shg;
-p=mtit(char(header),'fontsize',18,'color',[0 0 0],'xoff',-.05,'yoff',.025);
-saveas(gcf,char(header +'.png'));
+p=mtit(FileName(:,1:(end-4)),'fontsize',18,'color',[0 0 0],'xoff',-.05,'yoff',.025);
+saveas(gcf,strcat(FileName(1,1:(end-4)), '.png'));
